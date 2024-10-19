@@ -1,0 +1,61 @@
+# email-trigger
+import pymongo
+import smtplib
+import time
+from datetime import datetime
+from email.message import EmailMessage
+import ssl
+
+# MongoDB connection
+client = pymongo.MongoClient('mongodb://localhost:27017/')
+db = client['TabletReminder']  # Your MongoDB database
+users_collection = db['usercollections']  # Collection holding user data
+
+# Function to send an email reminder
+def send_email(receiver_email, subject, message):
+    email_sender = 'your_email@gmail.com'
+    email_password = 'your_password'
+    
+    # Create the email content
+    em = EmailMessage()
+    em['From'] = email_sender
+    em['To'] = receiver_email
+    em['Subject'] = subject
+    em.set_content(message)
+
+    # Secure connection to Gmail SMTP server
+    context = ssl.create_default_context()
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as smtp:
+        smtp.login(email_sender, email_password)
+        smtp.send_message(em)
+
+# Function to check all users and send a tablet reminder if needed
+def check_tablet_reminders():
+    current_time = datetime.now().time()  # Get current time
+    
+    # Query all users
+    users = users_collection.find({'consumed_flag': False})  # Only check users who haven't consumed the tablet
+
+    for user in users:
+        tablet_time = datetime.strptime(user['tablet_time'], "%H:%M").time()  # Convert stored time to time object
+        
+        # Check if tablet time has passed and send reminder if needed
+        if current_time >= tablet_time:
+            message = f"""Dear {user['username']},
+
+This is a reminder to take your tablet: {user['tablet_name']}.
+Please take it as per your prescribed schedule.
+
+Best regards,
+Tablet Reminder System"""
+            send_email(user['email'], 'Tablet Consumption Reminder', message)
+            print(f"Reminder email sent to {user['username']}")
+
+# Main loop to run the reminder check every 5 minutes
+while True:
+    try:
+        check_tablet_reminders()  # Check for reminders
+        time.sleep(300)  # Wait for 5 minutes before checking again
+    except Exception as e:
+        print(f"Error occurred: {e}")
+        time.sleep(300)  # Wait for 5 minutes if there's an error
